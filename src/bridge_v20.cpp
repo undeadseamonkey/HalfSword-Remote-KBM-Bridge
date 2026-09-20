@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <cwchar>
 #include <cstddef>
-#include "keybindings_v19.h"
+#include "keybindings_v20.h"
 
 namespace {
 constexpr std::uintptr_t kWorld = 0x08D67CE8;
@@ -738,12 +738,12 @@ DWORD run_bridge(void *self) {
     if (!GetModuleFileNameW(g_self, path, MAX_PATH)) return 1;
     wchar_t *slash = wcsrchr(path, L'\\');
     if (!slash) return 2;
-    wcscpy_s(slash + 1, MAX_PATH - (slash + 1 - path), L"HalfSwordBridge19.log");
+    wcscpy_s(slash + 1, MAX_PATH - (slash + 1 - path), L"HalfSwordBridge20.log");
     g_log = _wfsopen(path, L"w", _SH_DENYNO);
     if (!g_log) return 3;
-    std::fprintf(g_log, "Half Sword Player 2 KBM bridge v19; remote C disabled; PID=%lu\n", GetCurrentProcessId());
+    std::fprintf(g_log, "Half Sword Player 2 KBM bridge v20; remote C disabled; PID=%lu\n", GetCurrentProcessId());
     g_settings_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
-        sizeof(BridgeSettings), L"Local\\HalfSwordBridgeSettingsV19");
+        sizeof(BridgeSettings), L"Local\\HalfSwordBridgeSettingsV20");
     if (g_settings_mapping) {
         const bool created = GetLastError() != ERROR_ALREADY_EXISTS;
         g_settings = static_cast<BridgeSettings *>(MapViewOfFile(g_settings_mapping,
@@ -759,7 +759,7 @@ DWORD run_bridge(void *self) {
     EnumWindows(find_window, reinterpret_cast<LPARAM>(&g_window));
     if (!g_window) { std::fprintf(g_log, "Game window not found\n"); std::fclose(g_log); return 4; }
     const DWORD thread = GetWindowThreadProcessId(g_window, nullptr);
-    g_message = RegisterWindowMessageW(L"HalfSwordSteamRemotePlayer2BridgeV19_20260917");
+    g_message = RegisterWindowMessageW(L"HalfSwordSteamRemotePlayer2BridgeV20_20260917");
     HHOOK hook = g_message ? SetWindowsHookExW(WH_CALLWNDPROC, hook_proc, g_self, thread) : nullptr;
     if (!hook) { std::fprintf(g_log, "Game thread unavailable: %lu\n", GetLastError()); std::fclose(g_log); return 5; }
     HMODULE steam = GetModuleHandleW(L"steam_api64.dll");
@@ -778,10 +778,10 @@ DWORD run_bridge(void *self) {
     }
     std::fprintf(g_log, "Steam direct input enabled; window thread=%lu\n", thread);
     std::fflush(g_log);
-    HANDLE stop = CreateEventW(nullptr, TRUE, FALSE, L"Local\\HalfSwordBridge19Stop");
-    HANDLE running = CreateEventW(nullptr, TRUE, TRUE, L"Local\\HalfSwordBridge19Running");
-    HANDLE reset = CreateEventW(nullptr, TRUE, FALSE, L"Local\\HalfSwordBridge19Reset");
-    HANDLE snapshot = CreateEventW(nullptr, TRUE, FALSE, L"Local\\HalfSwordBridge19Snapshot");
+    HANDLE stop = CreateEventW(nullptr, TRUE, FALSE, L"Local\\HalfSwordBridge20Stop");
+    HANDLE running = CreateEventW(nullptr, TRUE, TRUE, L"Local\\HalfSwordBridge20Running");
+    HANDLE reset = CreateEventW(nullptr, TRUE, FALSE, L"Local\\HalfSwordBridge20Reset");
+    HANDLE snapshot = CreateEventW(nullptr, TRUE, FALSE, L"Local\\HalfSwordBridge20Snapshot");
     ULONGLONG last_record_sample = 0;
     bool have_session = false;
     uint32 session = 0;
@@ -812,7 +812,7 @@ DWORD run_bridge(void *self) {
                     g_record_file = _wfsopen(record_path, L"w", _SH_DENYNO);
                 }
                 if (g_record_file) {
-                    std::fprintf(g_record_file, "Half Sword input recording v19; Player selection %d (3=both); game PID=%lu\n"
+                    std::fprintf(g_record_file, "Half Sword input recording v20; Player selection %d (3=both); game PID=%lu\n"
                         "Samples are game key states and selected pawn flags; no screen or audio is captured.\n",
                         g_record_player, GetCurrentProcessId());
                     std::fflush(g_record_file);
@@ -927,8 +927,8 @@ DWORD run_bridge(void *self) {
 }
 
 DWORD WINAPI worker(void *self) {
-    HANDLE ready = CreateEventW(nullptr, TRUE, TRUE, L"Local\\HalfSwordBridge19Ready");
-    HANDLE start = CreateEventW(nullptr, TRUE, FALSE, L"Local\\HalfSwordBridge19Start");
+    HANDLE ready = CreateEventW(nullptr, TRUE, TRUE, L"Local\\HalfSwordBridge20Ready");
+    HANDLE start = CreateEventW(nullptr, TRUE, FALSE, L"Local\\HalfSwordBridge20Start");
     if (!ready || !start) return 1;
     for (;;) {
         run_bridge(self);
@@ -941,11 +941,33 @@ DWORD WINAPI worker(void *self) {
 }
 }
 
+extern "C" __declspec(dllexport) LRESULT CALLBACK HalfSwordBootstrapHook(
+    int code, WPARAM wparam, LPARAM lparam) {
+    // Keep a durable module reference after the launcher removes its temporary
+    // Windows message hook.
+    static INIT_ONCE pinned_once = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(&pinned_once,
+        [](PINIT_ONCE, PVOID parameter, PVOID *) -> BOOL {
+            HMODULE pinned = nullptr;
+            GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                reinterpret_cast<LPCWSTR>(parameter), &pinned);
+            return TRUE;
+        }, reinterpret_cast<PVOID>(&HalfSwordBootstrapHook), nullptr);
+    return CallNextHookEx(nullptr, code, wparam, lparam);
+}
+
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(module);
-        HANDLE thread = CreateThread(nullptr, 0, worker, module, 0, nullptr);
-        if (thread) CloseHandle(thread);
+        wchar_t process_path[MAX_PATH]{};
+        if (GetModuleFileNameW(nullptr, process_path, MAX_PATH)) {
+            const wchar_t *name = wcsrchr(process_path, L'\\');
+            name = name ? name + 1 : process_path;
+            if (_wcsicmp(name, L"HalfSwordUE5-Win64-Shipping.exe") == 0) {
+                HANDLE thread = CreateThread(nullptr, 0, worker, module, 0, nullptr);
+                if (thread) CloseHandle(thread);
+            }
+        }
     }
     return TRUE;
 }

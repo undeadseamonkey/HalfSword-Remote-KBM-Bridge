@@ -3,7 +3,7 @@
 #include <commctrl.h>
 #include <cwchar>
 #include <initializer_list>
-#include "keybindings_v19.h"
+#include "keybindings_v20.h"
 
 int load_bridge_into_half_sword();
 
@@ -27,7 +27,7 @@ bool event_exists(const wchar_t *name) {
 }
 
 void refresh_status() {
-    if (event_exists(L"Local\\HalfSwordBridge19Running")) {
+    if (event_exists(L"Local\\HalfSwordBridge20Running")) {
         const LONG recording = InterlockedCompareExchange(&g_settings->recording_player, 0, 0);
         SetWindowTextW(g_status, recording == 3 ? L"Running. Recording both players' input states."
             : recording == 1 ? L"Running. Recording Player 1's input states."
@@ -37,7 +37,7 @@ void refresh_status() {
     } else if (g_start_requested && GetTickCount64() - g_start_requested < 4000) {
         SetWindowTextW(g_status, L"Starting bridge...");
     } else if (g_start_requested) {
-        SetWindowTextW(g_status, L"Start failed. Check HalfSwordBridge19.log in this folder.");
+        SetWindowTextW(g_status, L"Start failed. Check HalfSwordBridge20.log in this folder.");
         g_start_requested = 0;
     } else {
         SetWindowTextW(g_status, L"Stopped. Start Half Sword, then click Start.");
@@ -53,8 +53,8 @@ void update_sensitivity() {
 }
 
 void start_bridge(HWND window) {
-    if (event_exists(L"Local\\HalfSwordBridge19Running")) return;
-    HANDLE start = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\\HalfSwordBridge19Start");
+    if (event_exists(L"Local\\HalfSwordBridge20Running")) return;
+    HANDLE start = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\\HalfSwordBridge20Start");
     if (start) {
         SetEvent(start);
         CloseHandle(start);
@@ -78,7 +78,7 @@ void start_bridge(HWND window) {
 
 void stop_bridge() {
     InterlockedExchange(&g_settings->recording_player, 0);
-    HANDLE stop = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\\HalfSwordBridge19Stop");
+    HANDLE stop = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\\HalfSwordBridge20Stop");
     if (stop) {
         SetEvent(stop);
         CloseHandle(stop);
@@ -88,7 +88,7 @@ void stop_bridge() {
 }
 
 void reset_inputs() {
-    HANDLE reset = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\\HalfSwordBridge19Reset");
+    HANDLE reset = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\\HalfSwordBridge20Reset");
     if (reset) { SetEvent(reset); CloseHandle(reset); }
 }
 
@@ -100,7 +100,7 @@ void update_record_button() {
 void toggle_recording(HWND window) {
     const LONG current = InterlockedCompareExchange(&g_settings->recording_player, 0, 0);
     if (current) InterlockedExchange(&g_settings->recording_player, 0);
-    else if (event_exists(L"Local\\HalfSwordBridge19Running")) {
+    else if (event_exists(L"Local\\HalfSwordBridge20Running")) {
         const int player = SendMessageW(g_record_p1, BM_GETCHECK, 0, 0) == BST_CHECKED ? 1
             : SendMessageW(g_record_p2, BM_GETCHECK, 0, 0) == BST_CHECKED ? 2 : 3;
         InterlockedExchange(&g_settings->recording_player, player);
@@ -227,7 +227,7 @@ void show_shift_warning() {
 }
 
 void assign_binding(HWND window) {
-    if (event_exists(L"Local\\HalfSwordBridge19Running")) {
+    if (event_exists(L"Local\\HalfSwordBridge20Running")) {
         MessageBoxW(window, L"Click Stop before changing a keybind, then Start again.",
             L"Joiner keybinds", MB_OK | MB_ICONINFORMATION);
         return;
@@ -250,7 +250,7 @@ void assign_binding(HWND window) {
 }
 
 void reset_bindings(HWND window) {
-    if (event_exists(L"Local\\HalfSwordBridge19Running")) {
+    if (event_exists(L"Local\\HalfSwordBridge20Running")) {
         MessageBoxW(window, L"Click Stop before resetting keybinds.",
             L"Joiner keybinds", MB_OK | MB_ICONINFORMATION);
         return;
@@ -470,7 +470,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         return 1;
     }
     g_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
-        sizeof(BridgeSettings), L"Local\\HalfSwordBridgeSettingsV19");
+        sizeof(BridgeSettings), L"Local\\HalfSwordBridgeSettingsV20");
     if (!g_mapping) { CloseHandle(single); return 2; }
     const bool created = GetLastError() != ERROR_ALREADY_EXISTS;
     g_settings = static_cast<BridgeSettings *>(MapViewOfFile(g_mapping,
